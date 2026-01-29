@@ -1,0 +1,84 @@
+/* Base: stack rows vertically — middle grows */
+Screen {
+    layout: vertical;
+    align: center middle;
+}
+
+/* --- Row 1 container --- */
+#top {
+    padding: 0;
+    /* border: solid $accent 20%; */
+    height: 12;
+}
+
+#left-info {
+    width: 25%;
+    border: solid $accent 20%;
+    padding: 1;
+    margin-right: 0;
+}
+
+#right-info {
+    width: 60%;
+    border: solid $accent 20%;
+    margin-left: 0;
+}
+
+#replicator-info{
+    width: 15%;
+    border: solid $accent 20%;
+    padding: 1;
+}
+
+#account-title {
+    height: 6;
+    border: tall $primary 30%;
+    margin-bottom: 1;
+}
+#log {
+    width: 1fr;
+    border: solid $accent 20%;
+    overflow: auto;
+}
+
+
+/* --- Row 2: middle grows to fill remaining space --- */
+#middle {
+    height: 10;
+    padding: 1;
+    border: solid $accent 20%;
+}
+
+#summary {
+    height: 3;
+    border: solid $accent 20%;
+    align: center middle;
+}
+
+#price_table {
+    height: 6;
+    width: 40%;
+    margin-bottom: 1;
+    border: tall $primary 30%;
+
+}
+
+
+/* --- Row 3: small footer-like area --- */
+#bottom {
+    layout: horizontal;
+    height: auto;
+    padding: 1;
+    border: solid $accent 20%;
+}
+
+
+
+#cmd , #preview_cmd{
+    width: 1fr;
+    margin-right: 1;
+}
+
+#btn-place {
+    margin-right: 1;
+}

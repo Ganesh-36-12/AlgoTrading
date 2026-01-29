@@ -1,0 +1,18 @@
+Screen {
+    layout: vertical;
+}
+
+#center_region {
+    height: 1fr;                  
+    width: 100%;
+    content-align: center middle; 
+    padding: 1;
+    border: solid green;
+}
+
+#main_cont{
+    border: red;
+    align: center middle;
+    padding: 2
+}
+
