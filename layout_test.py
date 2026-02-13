@@ -1,3 +1,4 @@
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.containers import Vertical,Horizontal,Container
@@ -7,7 +8,8 @@ from textual.reactive import reactive
 import os
 
 from core.options_main import OptionTrader
-from utils.auth_helper import authenticate_all
+from core.TradeReplicator import Replicator
+from utils.auth_helper import authenticate_all_sequential
 
 accounts_dir = "accounts"
 
@@ -62,8 +64,9 @@ class SelectionScreen(Screen):
         if event.button.id == "child_confirm":
             await self.child_confirm.remove()
             self.children_list = self.child_list.selected
-            self.app.selected_tuple = (self.master,self.children_list)
-            self.app.push_screen(AuthScreen())
+            self.app.selected_tuple = (self.master,*self.children_list)
+            self.app.switch_screen(AuthScreen())
+            
 
 class AuthScreen(Screen):
     """
@@ -79,23 +82,21 @@ class AuthScreen(Screen):
     def compose(self):
         with Vertical(id="right-info"):
             yield Static("Status", id="status-title")
-            # Enable markup parsing so [red]...[/] renders as red
             self.status = RichLog(id="log", highlight=True,markup=True,wrap=False)
             yield self.status
             yield RadioButton("SELL",id="confirm_sell",value=self.app.enable_sell)
             
-        yield Button("Next stage",id="next")
+        yield Button("Next stage",id="next",disabled=True)
         yield Footer()
     
     def on_mount(self) -> None:
     # ... create trader objects first ...
-        self.app.selected_tuple = ("Ganesh.env",)
         self.master_trader = OptionTrader(f"accounts/{self.app.selected_tuple[0]}")
         self.child_traders = []
+        
         for i in self.app.selected_tuple[1:]:
             child_trader = OptionTrader(f"accounts/{i}")
             self.child_traders.append(child_trader)
-        # inside your App.on_mount
         def _on_status(msg: str):
             # marshal to UI thread
             self.app.call_from_thread(lambda: self.status.write(msg))
@@ -107,17 +108,18 @@ class AuthScreen(Screen):
                     self.status.write(f"[red]{trader.CLIENT} auth FAIL[/]: {err}")
             self.app.call_from_thread(apply)
         def _run_auth():
-            successes, failures = authenticate_all(self.master_trader, self.child_traders, _on_status, _on_result, max_workers=6)
-            self.status.write(f"success list entries: {successes[0].name, successes[0].get_fund_details()}")
-            
+            successes, failures = authenticate_all_sequential(self.master_trader, self.child_traders, _on_status, _on_result)
+            for tr in successes:
+                self.status.write(f"success list entries: {tr.name, tr.get_fund_details()}")
+            self.query_one("#next").disabled = False
             self.app.trader_obj = successes
 
         self.run_worker(_run_auth, thread=True, exclusive=True)
+        
     async def on_button_pressed(self,event: Button.Pressed):
         if event.button.id == "next":
-            self.app.pop_screen()
-            self.app.pop_screen()
-            self.app.push_screen(TraderApp())
+            self.app.switch_screen(TraderApp())
+            
             
     def on_radio_button_changed(self, event: RadioButton.Changed) -> None:
             self.app.enable_sell = event.radio_button.value
@@ -133,7 +135,6 @@ class TraderApp(Screen):
     ce_token = reactive(None)
     pe_token = reactive(None)
     selected_tuple = None
-    trader_obj = []
 
     def compose(self) -> ComposeResult:
         # Row 1
@@ -152,14 +153,10 @@ class TraderApp(Screen):
                 yield RadioButton("BUY",id='buy_status')
 
         with Vertical(id="middle"):
-            # self.summary = Static("Waiting for data...", id="summary")
-            # yield self.summary
             self.price_table = DataTable(id="price_table")
             yield self.price_table
 
         with Horizontal(id="bottom"):
-            # self.cmd = Input(placeholder="Type: place | quit", id="cmd")
-            # yield self.cmd
             self.preview_input = Input(placeholder="Enter spot number:",id="preview_cmd")
             yield self.preview_input
             yield Button("Place", id="btn-place", variant="success")
@@ -170,40 +167,31 @@ class TraderApp(Screen):
     def on_mount(self) -> None:
         self.column_map = self.account_table.add_columns("Name","funds")
 
-        # def _on_status(text):
-        #     # from worker thread → marshal to UI
-        #     self.app.call_from_thread(lambda: self.status.write(text))
-
-        # def _on_result(trader, ok, err):
-        #     def ui_update():
-        #         if ok:
-        #             self.status.write(f"[green]{trader.CLIENT} auth OK[/]")
-        #             self.account_table.add_row(trader.name,trader.get_fund_details())
-        #         else:
-        #             self.status.write(f"[red]{trader.CLIENT} auth failed[/]: {err}")
-        #     self.app.call_from_thread(ui_update)
-
         for t in self.app.trader_obj:
-            self.row_map = self.account_table.add_row(t.name,t.get_fund_details(),key=t.name) 
+            cash = float(t.get_fund_details())
+            name =  max(t.name.split(), key=lambda s: len(s))
+            self.row_map = self.account_table.add_row(name,f"{cash:.2f}",key=t.name) 
         
         self.trader = self.app.trader_obj[0]
+        self.replicator = Replicator(
+            master=self.trader,
+            children=self.app.trader_obj[1:],
+            logger=lambda msg: self.app.call_from_thread(self.status.write,msg))
+        
         self.trader.trade_taken = not self.app.enable_sell
         self.trader.on_status = lambda text: self.app.call_from_thread(self._ui_status, text)
         self.trader.on_tokens_changed = lambda atm, ce, pe: self.app.call_from_thread(self._ui_tokens_changed, atm, ce, pe)
-        self.trader.on_price = lambda token, ltp: self.app.call_from_thread(self._ui_price, token, ltp)
-        self.trader.on_diff = lambda atm, ce_ltp, pe_ltp, diff: self.app.call_from_thread(self._ui_diff, atm, ce_ltp, pe_ltp, diff)
         self.trader.on_preview = lambda spot, preview_ce, preview_pe, preview_diff: self.app.call_from_thread(self._ui_preview, spot,preview_ce,preview_pe,preview_diff)
+        self.trader.on_table = lambda rows: self.app.call_from_thread(self._ui_ladder,rows)
         self.trader.on_trade_signal = self._on_trade_signal
 
         self.price_table.add_columns("current_atm","CE","PE","DIFF")
-        # self.price_table.add_columns(("current_atm",10),("CE",4),("PE",6),("DIFF",8))
-        self.price_table.add_row('-','-','-','-',key="current")
-        self.price_table.add_row('-','-','-','-',key="preview")
-        
-        
-        self.run_worker(self.trader.start_connection, thread=True, exclusive=True)
+        self.price_table.zebra_stripes = True
 
-        # self.summary.update("Waiting for ticks (Row 2 is active)")
+        self.price_table.add_row('-','-','-','-',key="preview")
+        self.ladder_keys = []
+
+        self.run_worker(self.trader.start_connection, thread=True, exclusive=True)
 
     # ---------- UI update handlers ----------
     def _ui_status(self, text: str):
@@ -212,24 +200,13 @@ class TraderApp(Screen):
     def _ui_tokens_changed(self, atm: int, ce_token: str, pe_token: str):
         self.atm, self.ce_token, self.pe_token = atm, ce_token, pe_token
         try:
-            ce_symbol = self.trader.token_symbol_map.get(ce_token, "-")
-            pe_symbol = self.trader.token_symbol_map.get(pe_token, "-")
+            ce_symbol = self.trader.symbol_token_map.inv[str(ce_token)]
+            pe_symbol = self.trader.symbol_token_map.inv[str(pe_token)]
 
             self.status.write(f"[blue]ATM[/] changed {atm}")
         except Exception as e:
             self.status.write(f"[red]UI token update failed: {e!r}[/]")
-
-    def _ui_diff(self, atm: int, ce_ltp: float, pe_ltp: float, diff: float):
-        try:
-            # self.summary.update(f"ATM {atm} | CE: {ce_ltp:.2f}  PE: {pe_ltp:.2f}  | Diff: {diff:.2f}")
-            new_row_data = (f"{atm}",f"{ce_ltp:.2f}",f"{pe_ltp:.2f}",f"{diff:.2f}")
-            column_keys = list(self.price_table.columns.keys())
-            
-            for col_key, new_value in zip(column_keys, new_row_data):
-                self.price_table.update_cell("current", col_key, new_value,update_width=True)
-        except Exception as e:
-            self.status.write(f"[red]UI diff update failed: {e!r}[/]")
-    
+                
     def _ui_preview(self, atm: int, ce_ltp: float, pe_ltp: float, diff: float):
         try:
             new_row_data = (f"{atm}",f"{ce_ltp:.2f}",f"{pe_ltp:.2f}",f"{diff:.2f}")
@@ -240,14 +217,31 @@ class TraderApp(Screen):
         except Exception as e:
             self.status.write(f"[red]UI diff update failed: {e!r}[/]")            
 
+    def _ui_ladder(self,rows):
+        try:
+            for key in self.ladder_keys:
+                if key in self.price_table.rows:
+                    self.price_table.remove_row(key)
+            self.ladder_keys.clear()
+            for strike ,ce,pe,diff in rows:
+                key = f"ladder_{strike}"
+                if strike == self.atm:
+                    styled_row = [Text(str(cell), style="bold #186ac7") for cell in (strike,ce,pe,diff)]
+                    self.price_table.add_row(*styled_row,key=key)
+                    self.ladder_keys.append(key)
+                    continue
+                self.price_table.add_row(f"{strike}",f"{ce:.2f}",f"{pe:.2f}",f"{diff:.2f}",key=key)
+                self.ladder_keys.append(key)
+        except Exception as e:
+            self.status.write(f"[red] Ladder update failed: {e!r}[/]")
 
     def _on_trade_signal(self, signal: dict):
         if self.app.enable_sell:
-            if not self.trader.trade_taken:
-                self._ui_status(f"[green]Trade signal[/]: {signal}")
-                self.trader.trade_taken = True
-            else:
+            if self.trader.trade_taken:
                 self._ui_status(f"[yellow]Trade signal[/]: Trade already taken")
+            else:
+                self.run_worker(lambda: self.replicator.test(signal),thread=True)
+                self.trader.trade_taken = True
         else:
             self._ui_status(f"[red]Trade signal[/]: Selling disabled")
         # Optional: auto-place orders here
