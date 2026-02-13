@@ -2,21 +2,20 @@
 # option_trader.py
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from logzero import logger
-from utils.load_instrument_token import load_options_token
+from utils.load_instrument_token import load_options_token ,get_current_expiry
 import threading
-import requests, os, json, pyotp, math, time
+import json, pyotp, math, time
 
 class OptionTrader:
     def __init__(self, client_path):
         try:
-            print(client_path)
-            load_dotenv(client_path)
-            self.CLIENT = os.getenv('CLIENT')
-            self.API = os.getenv('API')
-            self.MPIN = os.getenv('PIN')
-            self.TOTP_Secret = os.getenv('TOTP')
+            cfg = dotenv_values(client_path)
+            self.CLIENT = cfg.get('CLIENT')
+            self.API = cfg.get('API')
+            self.MPIN = cfg.get('PIN')
+            self.TOTP_Secret = cfg.get('TOTP')
         except Exception as e:
             print("check the file contents")
             print("error caused:", e)
@@ -40,11 +39,15 @@ class OptionTrader:
         self.pe_token = None
         self.preview_ce_token = None
         self.preview_pe_token = None
+        self.on_table = None
         self.AUTH_TOKEN = None
         self.FEED_TOKEN = None
         self.name = None
         self.trade_taken = False
-        self.option_token_map, self.token_symbol_map = load_options_token()
+        self.expiry = get_current_expiry()
+        self.expiry_list , self.symbol_token_map = load_options_token()
+        self.range_tokens = set()
+        self.ranged_strikes = []
 
     # --- small helpers to safely emit events ---
     def _emit_status(self, text: str):
@@ -61,10 +64,10 @@ class OptionTrader:
             except Exception:
                 pass
 
-    def _emit_diff(self, atm: int, ce_ltp: float, pe_ltp: float, diff: float):
+    def _emit_diff(self, atm: int, ce_ltp: float, pe_ltp: float, diff: float, r_key : str):
         if callable(self.on_diff):
             try:
-                self.on_diff(atm, ce_ltp, pe_ltp, diff)
+                self.on_diff(atm, ce_ltp, pe_ltp, diff, r_key)
             except Exception:
                 pass
             
@@ -86,6 +89,12 @@ class OptionTrader:
         if callable(self.on_tokens_changed):
             try:
                 self.on_tokens_changed(atm, ce_token, pe_token)
+            except Exception:
+                pass
+    def _emit_table(self,rows):
+        if hasattr(self,"on_table") and callable(self.on_table):
+            try:
+                self.on_table(rows)
             except Exception:
                 pass
 
@@ -117,9 +126,12 @@ class OptionTrader:
     def get_atm_strike(self, price, step=50):
         return math.ceil(price / step) * step
 
+    def get_strike_range(self,atm,count=5,step=50):
+        return [atm + i * step for i in range(-count,count+1)]
+
     def get_ce_pe_tokens(self, strike):
-        ce = self.option_token_map.get((strike, "CE"))
-        pe = self.option_token_map.get((strike, "PE"))
+        ce = self.symbol_token_map[f"NIFTY{self.expiry}{strike}CE"]
+        pe = self.symbol_token_map[f"NIFTY{self.expiry}{strike}PE"]
         return ce, pe
 
     def on_open(self, ws):
@@ -127,7 +139,7 @@ class OptionTrader:
         self.sws.subscribe(
             correlation_id="NIFTY_SPOT",
             mode=1,
-            token_list=[{"exchangeType": 1, "tokens": ["26000"]}]  # NSE index token
+            token_list=[{"exchangeType": 1, "tokens": ["99926000"]}]  # NSE index token
         )
 
     def on_data(self, ws, message):
@@ -160,8 +172,8 @@ class OptionTrader:
         return {
             "startergy": "ATM_DIFF_SELL",
             "legs": [
-                {"symbol": self.token_symbol_map[self.ce_token], "token": self.ce_token},
-                {"symbol": self.token_symbol_map[self.pe_token], "token": self.pe_token},
+                {"symbol": self.symbol_token_map.inv[str(self.ce_token)], "token": self.ce_token},
+                {"symbol": self.symbol_token_map.inv[str(self.pe_token)], "token": self.pe_token},
             ]
         }
 
@@ -182,13 +194,54 @@ class OptionTrader:
         except:
             self._emit_status("Something went wrong in preview")
         
+    def get_other_spots(self,strike):
+        other_spot_tokens = {}
+        temp = strike - 250
+        count = 1
+        for i in range(10):
+            if temp != strike:
+                other_spot_tokens[(f"row{count}",temp)] = (self.get_ce_pe_tokens(temp))
+                count+=1
+            temp+=50
+        return other_spot_tokens
+
+            
+    def subscribe_strike_range(self,atm):
+        strikes = self.get_strike_range(atm)
+        new_tokens = []
+        
+        for strike in strikes:
+            ce,pe = self.get_ce_pe_tokens(strike)
+            if ce and pe:
+                new_tokens.extend([ce,pe])
+        new_tokens = set(new_tokens)
+        remove_tokens = list(self.range_tokens - new_tokens)
+        
+        if remove_tokens:
+            self.sws.unsubscribe(
+                correlation_id  = "REM_RANGE",
+                mode = 1,
+                token_list=[{"exchangeType": 2, "tokens": remove_tokens}]
+            )
+        add_tokens = list(new_tokens-self.range_tokens)
+        
+        if add_tokens:
+            self.sws.subscribe(
+                correlation_id  = "ADD_RANGE",
+                mode = 1,
+                token_list=[{"exchangeType": 2, "tokens": add_tokens}]
+            )
+        self.range_tokens = new_tokens
+        self.ranged_strikes = strikes
         
     def main(self):
         # Runs in a background thread
         while not self.stop_event.is_set():
-            if "26000" in self.ltp_cache:
-                nifty_price = self.ltp_cache["26000"]
+            if "99926000" in self.ltp_cache:
+                nifty_price = self.ltp_cache["99926000"]
                 atm = self.get_atm_strike(nifty_price)
+                other_spot_tokens = self.get_other_spots(atm)
+                tokens = [item for sublist in other_spot_tokens.values() for item in sublist]
                 if atm != self.current_atm:
                     old_ce, old_pe = self.ce_token, self.pe_token
                     self.ce_token, self.pe_token = self.get_ce_pe_tokens(atm)
@@ -201,29 +254,41 @@ class OptionTrader:
                                 token_list=[{"exchangeType": 2, "tokens": [old_ce, old_pe]}]
                             )
                         # Subscribe new
-                        self.sws.subscribe(
-                            correlation_id="ADD_OPT",
-                            mode=1,
-                            token_list=[{"exchangeType": 2, "tokens": [self.ce_token, self.pe_token]}]
-                        )
-                        self.current_atm = atm
-                        self._emit_tokens_changed(atm, self.ce_token, self.pe_token)
+                        try:
+                            self.sws.subscribe(
+                                correlation_id="ADD_OPT",
+                                mode=1,
+                                token_list=[{"exchangeType": 2, "tokens": [self.ce_token, self.pe_token , *tokens]}]
+                            )
+                            self.current_atm = atm
+                            self._emit_tokens_changed(atm, self.ce_token, self.pe_token)
+                            self.subscribe_strike_range(atm)
+                        except Exception as e:
+                            self._emit_status(f"error while subscribing:{e}")
             try:
             # CE & PE values if available
                 if self.ce_token in self.ltp_cache and self.pe_token in self.ltp_cache:
                     ce_value = self.ltp_cache[self.ce_token]
                     pe_value = self.ltp_cache[self.pe_token]
                     diff = abs(ce_value - pe_value)
-
-                    # Let UI show a single-line summary                
-                    self._emit_diff(self.current_atm, ce_value, pe_value, diff)
-
+                
                     if diff <= 3 and not self.trade_taken:
                         self._emit_status("Entry condition met")
                         signal = self.build_trade_signal()
-                        self.trade_taken = True
                         self.emit_trade_signal(signal)
+                        self.trade_taken = True
+                        
+                row = []
+                for strike in self.ranged_strikes:
+                    ce,pe = self.get_ce_pe_tokens(strike)
+                    ce_ltp = self.ltp_cache.get(ce)
+                    pe_ltp = self.ltp_cache.get(pe)
                     
+                    if ce_ltp is not None and pe_ltp is not None:
+                        row.append((strike,ce_ltp,pe_ltp,abs(ce_ltp-pe_ltp)))
+                if row:
+                    self._emit_table(row)
+
                 if self.preview_ce_token in self.ltp_cache and self.preview_pe_token in self.ltp_cache:
                     preview_ce_value = self.ltp_cache[self.preview_ce_token]
                     preview_pe_value = self.ltp_cache[self.preview_pe_token]
@@ -231,6 +296,9 @@ class OptionTrader:
                     preview_diff = abs(preview_ce_value - preview_pe_value)
                     
                     self._emit_preview(self.spot,preview_ce_value,preview_pe_value,preview_diff)
+                
+                
+                
             except Exception as e:
                 self._emit_status("error: ",e)
             time.sleep(0.5)
