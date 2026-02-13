@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from bidict import bidict
 import pandas as pd
 import requests,json
 
@@ -21,15 +22,24 @@ def load_options_token():
     opt_df =opt_df.drop(columns=["instrumenttype","exch_seg","name","lotsize","tick_size"])
 
     today = datetime.today().date()
+    month = today + timedelta(days=30)
     days_to_tuesday = (1-today.weekday()) % 7
     
-    current_week_expiry = pd.to_datetime(today+timedelta(days=days_to_tuesday))
-    week_start = pd.to_datetime(current_week_expiry - timedelta(days=6))
+    # current_week_expiry = pd.to_datetime(today+timedelta(days=days_to_tuesday)).strftime('%d%b%Y').upper()
     
-    opt_df =opt_df[(opt_df['expiry']>=week_start) & (opt_df['expiry']<=current_week_expiry)]
-    option_token_map = {}
-    token_symbol_map = {}
-    for _, row in opt_df.iterrows():
-        option_token_map[(int(float(row["strike"])), row["symbol"][-2:])] = str(row["token"])
-        token_symbol_map[str(row["token"])] = row["symbol"]
-    return option_token_map,token_symbol_map
+    # week_start = pd.to_datetime(current_week_expiry - timedelta(days=6))
+    
+    opt_df = opt_df[ (opt_df['expiry'] > pd.to_datetime(today)) & (opt_df['expiry'] <= pd.to_datetime(month)) ]
+    
+    expiry_list = list(map(lambda x: x.upper() ,opt_df['expiry'].unique().strftime('%d%b%y')))
+    
+    symbol_token_map = bidict(zip(opt_df['symbol'], opt_df['token']))
+    
+    return expiry_list, symbol_token_map 
+
+def get_current_expiry():
+    today = datetime.today().date()
+    days_to_tuesday = (1-today.weekday()) % 7
+    current_week_expiry = pd.to_datetime(today+timedelta(days=days_to_tuesday)).strftime('%d%b%y').upper()
+    
+    return current_week_expiry
