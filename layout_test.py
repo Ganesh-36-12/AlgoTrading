@@ -1,6 +1,7 @@
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.screen import Screen
+from textual.coordinate import Coordinate
 from textual.containers import Vertical,Horizontal,Container
 from textual.widgets import  DataTable, Static, Button, Footer, RadioButton, Input, SelectionList, RichLog
 from textual.reactive import reactive
@@ -128,19 +129,11 @@ class AuthScreen(Screen):
 class TraderApp(Screen):
     CSS_PATH = "styles.tcss"
 
-    # reactive state
-    client_name = reactive("-")
-    funds = reactive(0.0)
-    atm = reactive(None)
-    ce_token = reactive(None)
-    pe_token = reactive(None)
-    selected_tuple = None
-
     def compose(self) -> ComposeResult:
         # Row 1
         with Horizontal(id="top"):
             with Vertical(id="left-info"):
-                self.account_table = DataTable(id="account-title")
+                self.account_table = DataTable(id="account-table")
                 yield self.account_table
                 
             with Vertical(id="right-info"):
@@ -154,6 +147,7 @@ class TraderApp(Screen):
 
         with Vertical(id="middle"):
             self.price_table = DataTable(id="price_table")
+            self.price_table.cursor_type = "cell"
             yield self.price_table
 
         with Horizontal(id="bottom"):
@@ -226,7 +220,7 @@ class TraderApp(Screen):
             for strike ,ce,pe,diff in rows:
                 key = f"ladder_{strike}"
                 if strike == self.atm:
-                    styled_row = [Text(str(cell), style="bold #186ac7") for cell in (strike,ce,pe,diff)]
+                    styled_row = [Text(str(cell), style="bold #186ac7") for cell in (strike,ce,pe,f"{diff:.2f}")]
                     self.price_table.add_row(*styled_row,key=key)
                     self.ladder_keys.append(key)
                     continue
@@ -246,6 +240,31 @@ class TraderApp(Screen):
             self._ui_status(f"[red]Trade signal[/]: Selling disabled")
         # Optional: auto-place orders here
 
+    def get_spot_tokens(self,cell_coordinate : Coordinate):
+        coordinate = Coordinate(cell_coordinate.row,0)
+        spot_value = self.price_table.get_cell_at(coordinate)
+        ce, pe = self.trader.get_ce_pe_tokens(spot_value)
+        if cell_coordinate.column == 0:
+            return (ce,pe)
+        elif cell_coordinate.column == 1:
+            return (ce,)
+        elif cell_coordinate.column == 2:
+            return (pe,)
+        
+    
+    def on_data_table_cell_selected(self,event: DataTable.CellSelected):
+        cell_value = event.value
+        # coordinate = Coordinate(event.coordinate.row,0)
+        # spot_value = self.price_table.get_cell_at(coordinate)
+        tokens = self.get_spot_tokens(event.coordinate)
+        message = (
+            f"CE PE value {tokens} "
+            f"cell value {cell_value}"
+            # f"CE PE value {(spot_value)}"
+            
+        )
+        self.status.write(message)
+    
 
     # ---------- Input & buttons ----------
     async def on_input_submitted(self, event: Input.Submitted):
@@ -269,7 +288,7 @@ class TraderApp(Screen):
     
     async def _handle_command(self, cmd: str):
         if cmd == "place":
-            signal = self.trader.build_trade_signal()
+            signal = self.trader.build_trade_signal([],"BUY")
             self._on_trade_signal(signal)
             self.preview_input.value = ""
         elif cmd == "quit":
@@ -277,7 +296,6 @@ class TraderApp(Screen):
         elif cmd.isdigit() and len(cmd) == 5:
             self.trader.preview(int(cmd))
             self.preview_input.value = ""
-            
         else:
             self._ui_status(f"[red]Unknown command[/]: {cmd}")
             self.preview_input.value = ""
