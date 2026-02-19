@@ -13,7 +13,7 @@ Screen {
 
 #left-info {
     width: 25%;
-    border: solid $accent 20%;
+    /* border: solid $accent 20%; */
     padding: 1;
     margin-right: 0;
 }
@@ -30,10 +30,9 @@ Screen {
     padding: 1;
 }
 
-#account-title {
-    height: 6;
+#account-table {
+    height: 10;
     border: tall $primary 30%;
-    margin-bottom: 1;
 }
 #log {
     width: 1fr;
@@ -44,13 +43,13 @@ Screen {
 
 /* --- Row 2: middle grows to fill remaining space --- */
 #middle {
-    height: 20;
+    height: 18;
     padding: 1;
     /*border: solid $accent 20%;*/
 }
 
 #price_table {
-    height: 20;
+    height: 18;
     width: 40%;
     /* margin-bottom: 1; */
     border: tall $primary 30%;
