@@ -19,12 +19,12 @@ class Replicator:
             self._log("Executing in master first")
             
             for leg in trade_signal['legs']:
-                self.master.place_sell_order(leg['symbol'],leg['token'])
+                self.master.place_order(leg['symbol'],leg['token'])
                 
             self.log("Master done")
             for child in self.children:
                 for leg in trade_signal['legs']:
-                    child.place_sell_order(leg['symbol'],leg['token'])
+                    child.place_order(leg['symbol'],leg['token'])
             
             self.executed = True
         
@@ -36,7 +36,7 @@ class Replicator:
             self._log("Executing in master first")
             
             for leg in trade_signal['legs']:
-                self._log(f"Placing order in master with args:{leg['symbol']},{leg['token']}")
+                self._log(f"Placing order in master with args:{leg['symbol']},{leg['token']},{leg['B_S']},{leg['quantity']}")
                 
             self._log("Master done")
             for child in self.children:

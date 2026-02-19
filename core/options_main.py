@@ -168,14 +168,29 @@ class OptionTrader:
         else:
             self._emit_status("No trade signal handler attached")
 
-    def build_trade_signal(self):
+    def build_trade_signal(self,tokens:list,B_S: str, quantity= 65):
+        legs = []
+        if len(tokens) == 0:
+            tokens = [self.ce_token,self.pe_token]
+        for i in tokens:
+            leg_dict = {}
+            leg_dict["symbol"] = self.symbol_token_map.inv[str(i)]
+            leg_dict["token"] = i
+            leg_dict["B_S"] = B_S
+            leg_dict["quantity"] = f"{quantity}"
+            legs.append(leg_dict)
+        
         return {
             "startergy": "ATM_DIFF_SELL",
-            "legs": [
-                {"symbol": self.symbol_token_map.inv[str(self.ce_token)], "token": self.ce_token},
-                {"symbol": self.symbol_token_map.inv[str(self.pe_token)], "token": self.pe_token},
-            ]
+            "legs" : legs
         }
+        # return {
+        #     "startergy": "ATM_DIFF_SELL",
+        #     "legs": [
+        #         {"symbol": self.symbol_token_map.inv[str(self.ce_token)], "token": self.ce_token},
+        #         {"symbol": self.symbol_token_map.inv[str(self.pe_token)], "token": self.pe_token},
+        #     ]
+        # }
 
     def preview(self,spot :str):
         self.spot = spot
@@ -274,7 +289,7 @@ class OptionTrader:
                 
                     if diff <= 3 and not self.trade_taken:
                         self._emit_status("Entry condition met")
-                        signal = self.build_trade_signal()
+                        signal = self.build_trade_signal([],"SELL")
                         self.emit_trade_signal(signal)
                         self.trade_taken = True
                         
@@ -283,9 +298,9 @@ class OptionTrader:
                     ce,pe = self.get_ce_pe_tokens(strike)
                     ce_ltp = self.ltp_cache.get(ce)
                     pe_ltp = self.ltp_cache.get(pe)
-                    
                     if ce_ltp is not None and pe_ltp is not None:
-                        row.append((strike,ce_ltp,pe_ltp,abs(ce_ltp-pe_ltp)))
+                        diff = abs(ce_ltp-pe_ltp)
+                        row.append((strike,ce_ltp,pe_ltp,diff))
                 if row:
                     self._emit_table(row)
 
@@ -316,19 +331,19 @@ class OptionTrader:
         except Exception:
             pass
 
-    def place_sell_order(self, symbol, token):
+    def place_order(self, symbol, token, B_S, quantity = 65):
         try:
             orderparams = {
                 "variety": "NORMAL",
                 "tradingsymbol": symbol,
                 "symboltoken": token,
-                "transactiontype": "SELL",
+                "transactiontype": B_S,
                 "exchange": "NFO",
                 "ordertype": "MARKET",
                 "producttype": "INTRADAY",
                 "duration": "DAY",
                 "price": "0",
-                "quantity": "65"
+                "quantity": quantity
             }
             orderid = self.obj.placeOrder(orderparams)
             logger.info(f"Order placed successfully for {self.CLIENT}, Order ID: {orderid}")
