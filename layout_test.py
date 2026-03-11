@@ -1,10 +1,12 @@
 from rich.text import Text
+from textual import on
 from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.coordinate import Coordinate
+from textual.binding import Binding
 from textual.containers import Vertical,Horizontal,Container
-from textual.widgets import  DataTable, Static, Button, Footer, RadioButton, Input, SelectionList, RichLog
-from textual.reactive import reactive
+from textual.widgets import  DataTable, Static, Button, Footer, RadioButton, Input, SelectionList, Select, RichLog
+# from textual.reactive import reactive
 
 import os
 
@@ -128,6 +130,12 @@ class AuthScreen(Screen):
 
 class TraderApp(Screen):
     CSS_PATH = "styles.tcss"
+    
+    BINDINGS = [
+        Binding("s", "sell", "SELL item", show=True),
+        Binding("b", "buy", "BUY item", show=True)
+        
+    ]
 
     def compose(self) -> ComposeResult:
         # Row 1
@@ -145,7 +153,10 @@ class TraderApp(Screen):
                 yield RadioButton("SELL",id="sell_status",value=self.app.enable_sell)
                 yield RadioButton("BUY",id='buy_status')
 
+        # with Horizontal:
         with Vertical(id="middle"):
+            self.expiry_select =  Select(id="expiry_dropdown",allow_blank=True,options=[])
+            yield self.expiry_select
             self.price_table = DataTable(id="price_table")
             self.price_table.cursor_type = "cell"
             yield self.price_table
@@ -171,6 +182,9 @@ class TraderApp(Screen):
             master=self.trader,
             children=self.app.trader_obj[1:],
             logger=lambda msg: self.app.call_from_thread(self.status.write,msg))
+        
+        expiry_options = [(x,x) for x in self.trader.expiry_list]
+        self.expiry_select.set_options(expiry_options)
         
         self.trader.trade_taken = not self.app.enable_sell
         self.trader.on_status = lambda text: self.app.call_from_thread(self._ui_status, text)
@@ -213,19 +227,32 @@ class TraderApp(Screen):
 
     def _ui_ladder(self,rows):
         try:
-            for key in self.ladder_keys:
-                if key in self.price_table.rows:
-                    self.price_table.remove_row(key)
-            self.ladder_keys.clear()
+            table = self.price_table
+            cursor = table.cursor_coordinate
+            new_keys = []
             for strike ,ce,pe,diff in rows:
                 key = f"ladder_{strike}"
-                if strike == self.atm:
-                    styled_row = [Text(str(cell), style="bold #186ac7") for cell in (strike,ce,pe,f"{diff:.2f}")]
-                    self.price_table.add_row(*styled_row,key=key)
-                    self.ladder_keys.append(key)
-                    continue
-                self.price_table.add_row(f"{strike}",f"{ce:.2f}",f"{pe:.2f}",f"{diff:.2f}",key=key)
-                self.ladder_keys.append(key)
+                new_keys.append(key)
+                values = (f"{strike}",f"{ce:.2f}",f"{pe:.2f}",f"{diff:.2f}")
+                
+                if key in table.rows:
+                    if self.atm == key.split("_")[1]:
+                        values = [Text(v, style="bold #186ac7") for v in values]
+                    for col,val in zip(table.columns.keys(),values):
+                        table.update_cell(key,col,val)
+                else:
+                    if strike == self.atm:
+                        styled = [Text(v, style="bold #186ac7") for v in values]
+                        table.add_row(*styled,key=key)
+                    else:
+                        table.add_row(*values,key=key)
+            for old in list(self.ladder_keys):
+                if old not in new_keys and old in table.rows:
+                    table.remove_row(old)
+                self.ladder_keys = new_keys
+            if cursor.row < table.row_count:
+                table.cursor_coordinate = cursor
+                
         except Exception as e:
             self.status.write(f"[red] Ladder update failed: {e!r}[/]")
 
@@ -251,20 +278,19 @@ class TraderApp(Screen):
         elif cell_coordinate.column == 2:
             return (pe,)
         
-    
-    def on_data_table_cell_selected(self,event: DataTable.CellSelected):
-        cell_value = event.value
-        # coordinate = Coordinate(event.coordinate.row,0)
-        # spot_value = self.price_table.get_cell_at(coordinate)
-        tokens = self.get_spot_tokens(event.coordinate)
-        message = (
-            f"CE PE value {tokens} "
-            f"cell value {cell_value}"
-            # f"CE PE value {(spot_value)}"
-            
-        )
-        self.status.write(message)
-    
+    def action_sell(self) -> None:
+        coord = self.price_table.cursor_coordinate
+        if coord:
+            tokens = self.get_spot_tokens(coord)
+            signal = self.trader.build_trade_signal([*tokens],"SELL")
+            self._on_trade_signal(signal)
+
+    def action_buy(self) -> None:
+        coord = self.price_table.cursor_coordinate
+        if coord:
+            tokens = self.get_spot_tokens(coord)
+            signal = self.trader.build_trade_signal([*tokens],"BUY")
+            self._on_trade_signal(signal)
 
     # ---------- Input & buttons ----------
     async def on_input_submitted(self, event: Input.Submitted):
@@ -284,7 +310,13 @@ class TraderApp(Screen):
                 self.status.write(f"[red]selling stopped currently[/]")
             else:
                 self.trader.trade_taken = False
+                self.replicator.executed = False
                 self.status.write(f"[green]selling started currently[/]")
+                
+    @on(Select.Changed)
+    def select_changed(self, event: Select.Changed) -> None:
+        self.status.write(str(event.value))
+        self.trader.expiry = str(event.value)
     
     async def _handle_command(self, cmd: str):
         if cmd == "place":
