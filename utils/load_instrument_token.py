@@ -1,15 +1,27 @@
 from datetime import datetime, timedelta
 from bidict import bidict
+from glob import glob
+import os
 import pandas as pd
 import requests,json
 
+
 def load_options_token():
+    files = glob("tickers*") 
+    formatted_today = datetime.today().date().strftime("%d%m%Y")
+    
     try:
-        with open("tickers.json", "r") as file:
+        with open(f"tickers_{formatted_today}.json", "r") as file:
             instrument_list= json.load(file)
             
     except FileNotFoundError:
-        with open("tickers.json", 'w') as json_file:
+        try:
+            os.remove(files[0])
+            print(f"'{files}' has been removed successfully.")
+        except Exception as e:
+            print(f"Error: '{e}'")
+            
+        with open(f"tickers_{formatted_today}.json", 'w') as json_file:
             instrument_url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
             response = requests.get(instrument_url,verify=False)
             instrument_list = response.json()
@@ -24,10 +36,6 @@ def load_options_token():
     today = datetime.today().date()
     month = today + timedelta(days=30)
     days_to_tuesday = (1-today.weekday()) % 7
-    
-    # current_week_expiry = pd.to_datetime(today+timedelta(days=days_to_tuesday)).strftime('%d%b%Y').upper()
-    
-    # week_start = pd.to_datetime(current_week_expiry - timedelta(days=6))
     
     opt_df = opt_df[ (opt_df['expiry'] > pd.to_datetime(today)) & (opt_df['expiry'] <= pd.to_datetime(month)) ]
     

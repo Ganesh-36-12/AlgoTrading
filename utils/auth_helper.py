@@ -24,10 +24,10 @@ def auth_with_backoff(trader, tries=5, base_delay=1.0, on_status=None):
 
 def authenticate_all_sequential(master_obj, child_objs, on_status=None, on_result=None, delay_between=2.0):
     successes, failures = [], {}
-
     all_traders = [master_obj, *child_objs]
-    if callable(on_status):
-        on_status(f"available trader: {type(child_objs)}")
+    on_status("Downloading Tokens")
+    master_obj.loading_tokens()
+    on_status("Tokens Loaded")
     for idx, t in enumerate(all_traders):
         try:
             if callable(on_status):
