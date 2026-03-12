@@ -32,7 +32,7 @@ class OptionTrader:
         self.obj = SmartConnect(api_key=self.API, disable_ssl=True)
         self.sws = None
         self.stop_event = threading.Event()
-        self.subscrption = {"mode": 1, "exchangeType": 2, "tokens": []}
+        # self.subscrption = {"mode": 1, "exchangeType": 2, "tokens": []}
         self.ltp_cache = {}
         self.current_atm = None
         self.ce_token = None
@@ -45,9 +45,13 @@ class OptionTrader:
         self.name = None
         self.trade_taken = False
         self.expiry = get_current_expiry()
-        self.expiry_list , self.symbol_token_map = load_options_token()
+        # self.expiry_list , self.symbol_token_map = load_options_token() 
+        self.expiry_list = None
+        self.symbol_token_map = None  
+        
         self.range_tokens = set()
         self.ranged_strikes = []
+        
 
     # --- small helpers to safely emit events ---
     def _emit_status(self, text: str):
@@ -97,6 +101,12 @@ class OptionTrader:
                 self.on_table(rows)
             except Exception:
                 pass
+            
+    def loading_tokens(self):
+        self._emit_status("Downloading Tokens")
+        self.expiry_list , self.symbol_token_map = load_options_token()    
+        self._emit_status("Tokens Loaded")
+        
 
     # --- business logic unchanged, but calls UI hooks ---
     def authenticate(self):
@@ -184,13 +194,6 @@ class OptionTrader:
             "startergy": "ATM_DIFF_SELL",
             "legs" : legs
         }
-        # return {
-        #     "startergy": "ATM_DIFF_SELL",
-        #     "legs": [
-        #         {"symbol": self.symbol_token_map.inv[str(self.ce_token)], "token": self.ce_token},
-        #         {"symbol": self.symbol_token_map.inv[str(self.pe_token)], "token": self.pe_token},
-        #     ]
-        # }
 
     def preview(self,spot :str):
         self.spot = spot
