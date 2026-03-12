@@ -171,6 +171,7 @@ class TraderApp(Screen):
 
     def on_mount(self) -> None:
         self.column_map = self.account_table.add_columns("Name","funds")
+        
 
         for t in self.app.trader_obj:
             cash = float(t.get_fund_details())
@@ -279,6 +280,10 @@ class TraderApp(Screen):
             return (pe,)
         
     def action_sell(self) -> None:
+        self.status.write(f"tokens: {self.trader.range_tokens}")
+        self.status.write(f"strikes: {self.trader.ranged_strikes}")
+        
+        
         coord = self.price_table.cursor_coordinate
         if coord:
             tokens = self.get_spot_tokens(coord)
@@ -315,8 +320,9 @@ class TraderApp(Screen):
                 
     @on(Select.Changed)
     def select_changed(self, event: Select.Changed) -> None:
-        self.status.write(str(event.value))
         self.trader.expiry = str(event.value)
+        self.trader.subscribe_strike_range(self.trader.current_atm)
+
     
     async def _handle_command(self, cmd: str):
         if cmd == "place":
