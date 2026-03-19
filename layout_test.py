@@ -212,7 +212,8 @@ class TraderApp(Screen):
             ce_symbol = self.trader.symbol_token_map.inv[str(ce_token)]
             pe_symbol = self.trader.symbol_token_map.inv[str(pe_token)]
 
-            self.status.write(f"[blue]ATM[/] changed {atm}")
+            # self.status.write(f"[blue]ATM[/] changed {atm}")
+            
         except Exception as e:
             self.status.write(f"[red]UI token update failed: {e!r}[/]")
                 
@@ -283,7 +284,8 @@ class TraderApp(Screen):
         self.status.write(f"tokens: {self.trader.range_tokens}")
         self.status.write(f"strikes: {self.trader.ranged_strikes}")
         
-        
+        self.trader.trade_taken = False
+        self.replicator.executed = False
         coord = self.price_table.cursor_coordinate
         if coord:
             tokens = self.get_spot_tokens(coord)
@@ -291,6 +293,9 @@ class TraderApp(Screen):
             self._on_trade_signal(signal)
 
     def action_buy(self) -> None:
+        self.trader.trade_taken = False
+        self.replicator.executed = False
+        
         coord = self.price_table.cursor_coordinate
         if coord:
             tokens = self.get_spot_tokens(coord)
