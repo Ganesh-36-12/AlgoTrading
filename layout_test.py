@@ -187,7 +187,7 @@ class TraderApp(Screen):
         expiry_options = [(x,x) for x in self.trader.expiry_list]
         self.expiry_select.set_options(expiry_options)
         
-        self.trader.trade_taken = not self.app.enable_sell
+        self.trader.auto_trade_enabled = self.app.enable_sell
         self.trader.on_status = lambda text: self.app.call_from_thread(self._ui_status, text)
         self.trader.on_tokens_changed = lambda atm, ce, pe: self.app.call_from_thread(self._ui_tokens_changed, atm, ce, pe)
         self.trader.on_preview = lambda spot, preview_ce, preview_pe, preview_diff: self.app.call_from_thread(self._ui_preview, spot,preview_ce,preview_pe,preview_diff)
@@ -236,18 +236,15 @@ class TraderApp(Screen):
                 key = f"ladder_{strike}"
                 new_keys.append(key)
                 values = (f"{strike}",f"{ce:.2f}",f"{pe:.2f}",f"{diff:.2f}")
-                
+                                        
+                if strike == self.atm:
+                    values = [Text(v, style="bold #186ac7") for v in values]
                 if key in table.rows:
-                    if self.atm == key.split("_")[1]:
-                        values = [Text(v, style="bold #186ac7") for v in values]
                     for col,val in zip(table.columns.keys(),values):
                         table.update_cell(key,col,val)
                 else:
-                    if strike == self.atm:
-                        styled = [Text(v, style="bold #186ac7") for v in values]
-                        table.add_row(*styled,key=key)
-                    else:
-                        table.add_row(*values,key=key)
+                    table.add_row(*values,key=key)
+                    
             for old in list(self.ladder_keys):
                 if old not in new_keys and old in table.rows:
                     table.remove_row(old)
@@ -258,16 +255,26 @@ class TraderApp(Screen):
         except Exception as e:
             self.status.write(f"[red] Ladder update failed: {e!r}[/]")
 
-    def _on_trade_signal(self, signal: dict):
-        if self.app.enable_sell:
+    def _on_trade_signal(self, signal: dict,force=False):
+        # if self.app.enable_sell:
+        #     if self.trader.trade_taken:
+        #         self._ui_status(f"[yellow]Trade signal[/]: Trade already taken")
+        #     else:
+        #         self.run_worker(lambda: self.replicator.execute(signal),thread=True)
+        #         self.trader.trade_taken = True
+        # else:
+        #     self._ui_status(f"[red]Trade signal[/]: Selling disabled")
+        # # Optional: auto-place orders here
+        if not force:
+            if not self.app.enable_sell:
+                self._ui_status("[red] Auto trading diabled[/]")
+                return
             if self.trader.trade_taken:
-                self._ui_status(f"[yellow]Trade signal[/]: Trade already taken")
-            else:
-                self.run_worker(lambda: self.replicator.test(signal),thread=True)
-                self.trader.trade_taken = True
-        else:
-            self._ui_status(f"[red]Trade signal[/]: Selling disabled")
-        # Optional: auto-place orders here
+                self._ui_status("[yellow]: Trade already taken [/]")
+                return
+        self.run_worker(lambda:self.replicator.test(signal,force=force),thread=True)
+        if not force:
+            self.trader.trade_taken = True
 
     def get_spot_tokens(self,cell_coordinate : Coordinate):
         coordinate = Coordinate(cell_coordinate.row,0)
@@ -281,30 +288,22 @@ class TraderApp(Screen):
             return (pe,)
         
     def action_sell(self) -> None:
-        self.status.write(f"tokens: {self.trader.range_tokens}")
-        self.status.write(f"strikes: {self.trader.ranged_strikes}")
-        
-        self.trader.trade_taken = False
-        self.replicator.executed = False
         coord = self.price_table.cursor_coordinate
         if coord:
             tokens = self.get_spot_tokens(coord)
             signal = self.trader.build_trade_signal([*tokens],"SELL")
-            self._on_trade_signal(signal)
+            self._on_trade_signal(signal,force=True)
 
     def action_buy(self) -> None:
-        self.trader.trade_taken = False
-        self.replicator.executed = False
-        
         coord = self.price_table.cursor_coordinate
         if coord:
             tokens = self.get_spot_tokens(coord)
             signal = self.trader.build_trade_signal([*tokens],"BUY")
-            self._on_trade_signal(signal)
+            self._on_trade_signal(signal,force=True)
 
     # ---------- Input & buttons ----------
     async def on_input_submitted(self, event: Input.Submitted):
-        await self._handle_command((event.value or "").strip().lower())
+        await self._handle_command((event.value or "").strip())
 
     async def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "btn-place":
@@ -315,20 +314,37 @@ class TraderApp(Screen):
     def on_radio_button_changed(self, event: RadioButton.Changed) -> None:
         if event.radio_button.id == "sell_status":
             self.app.enable_sell = event.radio_button.value
-            if event.radio_button.value == False :
-                self.trader.trade_taken = True
-                self.status.write(f"[red]selling stopped currently[/]")
+            
+            if not event.radio_button.value:
+                self.status.write(f"[red]Auto trading disabled[/]")
             else:
-                self.trader.trade_taken = False
-                self.replicator.executed = False
-                self.status.write(f"[green]selling started currently[/]")
+                self.status.write(f"[green]Auto trading enabled[/]")
+            # if event.radio_button.value == False :
+            #     self.trader.trade_taken = True
+            #     self.status.write(f"[red]selling stopped currently[/]")
+            # else:
+            #     self.trader.trade_taken = False
+            #     self.replicator.executed = False
+            #     self.status.write(f"[green]selling started currently[/]")
+            
+            
                 
     @on(Select.Changed)
     def select_changed(self, event: Select.Changed) -> None:
         self.trader.expiry = str(event.value)
         self.trader.subscribe_strike_range(self.trader.current_atm)
 
-    
+    def _debug_eval(self,expr: str):
+        try:
+            context = { "self": self, "trader": self.trader }
+            result = eval( expr, {}, context)
+        except SyntaxError:
+            result = exec(expr,{"self":self})
+        except Exception as e:
+            self.status.write(f"[red] Error: {e!r} [/]")
+        finally:
+            self.status.write(f"[cyan]DEBUG[/] {result}")
+            
     async def _handle_command(self, cmd: str):
         if cmd == "place":
             signal = self.trader.build_trade_signal([],"BUY")
@@ -339,6 +355,9 @@ class TraderApp(Screen):
         elif cmd.isdigit() and len(cmd) == 5:
             self.trader.preview(int(cmd))
             self.preview_input.value = ""
+        elif cmd.startswith("dbg "):
+            expr = cmd[4:]
+            self._debug_eval(expr)
         else:
             self._ui_status(f"[red]Unknown command[/]: {cmd}")
             self.preview_input.value = ""
