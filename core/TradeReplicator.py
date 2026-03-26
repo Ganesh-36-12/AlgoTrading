@@ -11,9 +11,10 @@ class Replicator:
     
     def _log(self,msg):
         self.log(msg)
-    def execute(self,trade_signal):
+        
+    def execute(self,trade_signal,force=False):
         with self.lock:
-            if self.executed:
+            if self.executed and not force:
                 self._log("trade already executed Ignoring..")
                 return
             self._log("Executing in master first")
@@ -26,11 +27,12 @@ class Replicator:
                 for leg in trade_signal['legs']:
                     child.place_order(leg['symbol'],leg['token'],leg['B_S'],leg['quantity'])
             
-            self.executed = True
+            if not force:
+                self.executed = True
         
-    def test(self,trade_signal):
+    def test(self,trade_signal,force=False):
         with self.lock:
-            if self.executed:
+            if self.executed and not force:
                 self._log("trade already executed Ignoring..")
                 return
             self._log("Executing in master first")
@@ -42,5 +44,5 @@ class Replicator:
             for child in self.children:
                 for leg in trade_signal['legs']:
                     self._log(f"Placing order in Child with args:{leg['symbol']},{leg['token']}")
-                    
-            self.executed = True
+            if not force:       
+                self.executed = True

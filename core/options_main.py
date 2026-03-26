@@ -33,24 +33,30 @@ class OptionTrader:
         self.sws = None
         self.stop_event = threading.Event()
         # self.subscrption = {"mode": 1, "exchangeType": 2, "tokens": []}
-        self.ltp_cache = {}
-        self.current_atm = None
+        self.AUTH_TOKEN = None
+        self.FEED_TOKEN = None
+        self.name = None
+        
         self.ce_token = None
         self.pe_token = None
         self.preview_ce_token = None
         self.preview_pe_token = None
         self.on_table = None
-        self.AUTH_TOKEN = None
-        self.FEED_TOKEN = None
-        self.name = None
+        
+        self.ltp_cache = {}
+        self.current_atm = None
+        self.diff_threshold = 3
+        self.range_tokens = set()
+        self.ranged_strikes = []
+        
         self.trade_taken = False
-        self.expiry = get_current_expiry()
-        # self.expiry_list , self.symbol_token_map = load_options_token() 
+        self.auto_trade_enabled = True
+        
+        self.expiry = None 
         self.expiry_list = None
         self.symbol_token_map = None  
         
-        self.range_tokens = set()
-        self.ranged_strikes = []
+        
         
 
     # --- small helpers to safely emit events ---
@@ -104,8 +110,8 @@ class OptionTrader:
             
     def loading_tokens(self):
         self._emit_status("Downloading Tokens")
-        self.expiry_list , self.symbol_token_map = load_options_token()    
-        self._emit_status("Tokens Loaded")
+        self.expiry,self.expiry_list , self.symbol_token_map = load_options_token()    
+        self._emit_status(f"Tokens Loaded and current expiry {self.expiry}")
         
 
     # --- business logic unchanged, but calls UI hooks ---
@@ -256,8 +262,8 @@ class OptionTrader:
         # Runs in a background thread
         while not self.stop_event.is_set():
             if "99926000" in self.ltp_cache:
-                nifty_price = self.ltp_cache["99926000"]
-                atm = self.get_atm_strike(nifty_price)
+                self.nifty_price = self.ltp_cache["99926000"]
+                atm = self.get_atm_strike(self.nifty_price)
                 other_spot_tokens = self.get_other_spots(atm)
                 tokens = [item for sublist in other_spot_tokens.values() for item in sublist]
                 if atm != self.current_atm:
@@ -290,7 +296,7 @@ class OptionTrader:
                     pe_value = self.ltp_cache[self.pe_token]
                     diff = abs(ce_value - pe_value)
                 
-                    if diff <= 3 and not self.trade_taken:
+                    if diff <= self.diff_threshold and self.auto_trade_enabled and not self.trade_taken:
                         self._emit_status("Entry condition met")
                         signal = self.build_trade_signal([],"SELL")
                         self.emit_trade_signal(signal)
@@ -314,12 +320,10 @@ class OptionTrader:
                     preview_diff = abs(preview_ce_value - preview_pe_value)
                     
                     self._emit_preview(self.spot,preview_ce_value,preview_pe_value,preview_diff)
-                
-                
-                
             except Exception as e:
                 self._emit_status("error: ",e)
             time.sleep(0.5)
+
 
     def start_connection(self):
         self.create_websocket()
