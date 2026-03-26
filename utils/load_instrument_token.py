@@ -28,22 +28,31 @@ def load_options_token():
             json.dump(instrument_list, json_file, indent=4)
 
 
-    opt_df = pd.DataFrame([i for i in instrument_list if i['name'] == "NIFTY" and i['instrumenttype'] in ['OPTIDX']])
-    opt_df['expiry'] = pd.to_datetime(opt_df['expiry'],format='%d%b%Y')
-    opt_df['strike'] =opt_df['strike'].astype(float).div(100).astype(int)
-    opt_df =opt_df.drop(columns=["instrumenttype","exch_seg","name","lotsize","tick_size"])
-
-    today = datetime.today().date()
-    month = today + timedelta(days=30)
-    days_to_tuesday = (1-today.weekday()) % 7
+    # opt_df = pd.DataFrame([i for i in instrument_list if i['name'] == "NIFTY" and i['instrumenttype'] in ['OPTIDX']])
+    # opt_df['expiry'] = pd.to_datetime(opt_df['expiry'],format='%d%b%Y')
+    # opt_df['strike'] =opt_df['strike'].astype(float).div(100).astype(int)
+    # opt_df =opt_df.drop(columns=["instrumenttype","exch_seg","name","lotsize","tick_size"])
+    # today = datetime.today().date()
+    # month = today + timedelta(days=30)
+    # days_to_tuesday = (1-today.weekday()) % 7
     
-    opt_df = opt_df[ (opt_df['expiry'] > pd.to_datetime(today)) & (opt_df['expiry'] <= pd.to_datetime(month)) ]
+    # opt_df = opt_df[ (opt_df['expiry'] > pd.to_datetime(today)) & (opt_df['expiry'] <= pd.to_datetime(month)) ]
+    df = pd.DataFrame(instrument_list)
+    df = df[ (df['name'] == "NIFTY") & (df['instrumenttype'] == "OPTIDX")].copy()
     
-    expiry_list = list(map(lambda x: x.upper() ,opt_df['expiry'].unique().strftime('%d%b%y')))
+    df["expiry"] = pd.to_datetime(df['expiry'],format="%d%b%Y")
+    df['strike'] = df['strike'].astype(float) / 100
     
-    symbol_token_map = bidict(zip(opt_df['symbol'], opt_df['token']))
+    today = pd.Timestamp.today().normalize()
+    df = df[(df['expiry'] >= today) & (df['expiry'] <= today + pd.Timedelta(days=30))]
     
-    return expiry_list, symbol_token_map 
+    current_expiry = df['expiry'].min()
+    expiry_list = sorted(df['expiry'].dt.strftime('%d%b%y').str.upper().unique())
+    # expiry_list = list(map(lambda x: x.upper() ,opt_df['expiry'].unique().strftime('%d%b%y')))
+    
+    symbol_token_map = bidict(zip(df['symbol'], df['token']))
+    
+    return current_expiry.strftime("%d%b%y").upper(),expiry_list, symbol_token_map 
 
 def get_current_expiry():
     today = datetime.today().date()
