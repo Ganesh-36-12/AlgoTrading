@@ -272,7 +272,7 @@ class TraderApp(Screen):
             if self.trader.trade_taken:
                 self._ui_status("[yellow]: Trade already taken [/]")
                 return
-        self.run_worker(lambda:self.replicator.test(signal,force=force),thread=True)
+        self.run_worker(lambda:self.replicator.execute(signal,force=force),thread=True)
         if not force:
             self.trader.trade_taken = True
 
