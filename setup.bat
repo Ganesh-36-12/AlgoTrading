@@ -1,6 +1,6 @@
 @echo off
 set REPO_URL=https://github.com/Ganesh-36-12/AlgoTrading/archive/refs/heads/main.zip
-set PROJECT_NAME=REPO_NAME
+set PROJECT_NAME=AlgoTrading
 
 echo ===============================
 echo Updating project from GitHub
@@ -31,7 +31,6 @@ del repo.zip
 
 :: Install dependencies
 echo Installing required packages...
-python -m pip install --upgrade pip
 pip install -r %PROJECT_NAME%\requirements.txt
 
 echo ===============================
