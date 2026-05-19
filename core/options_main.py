@@ -26,6 +26,7 @@ class OptionTrader:
         self.on_diff = None             # def on_diff(atm: int, ce_ltp: float, pe_ltp: float, diff: float) -> None
         self.on_preview = None
         self.on_auth = None             # def on_auth(client_name: str, funds: float) -> None
+        self.on_table = None
         self.on_tokens_changed = None   # def on_tokens_changed(atm: int, ce_token: str, pe_token: str) -> None
         self.on_trade_signal = None     # already used by you
 
@@ -41,7 +42,6 @@ class OptionTrader:
         self.pe_token = None
         self.preview_ce_token = None
         self.preview_pe_token = None
-        self.on_table = None
         
         self.ltp_cache = {}
         self.current_atm = None
@@ -110,8 +110,9 @@ class OptionTrader:
             
     def loading_tokens(self):
         self._emit_status("Downloading Tokens")
-        self.expiry,self.expiry_list , self.symbol_token_map = load_options_token()    
-        self._emit_status(f"Tokens Loaded and current expiry {self.expiry}")
+        self.expiry_list , self.symbol_token_map = load_options_token()
+        self.expiry = self.expiry_list[0]
+        # self._emit_status(f"Tokens Loaded and current expiry {self.expiry}")
         
 
     # --- business logic unchanged, but calls UI hooks ---
