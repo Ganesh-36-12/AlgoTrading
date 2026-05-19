@@ -1,77 +1,130 @@
-/* Base: stack rows vertically — middle grows */
+/* =========================
+   SCREEN BASE
+========================= */
 Screen {
     layout: vertical;
-    align: center middle;
+    padding: 1;
 }
 
-/* --- Row 1 container --- */
+/* =========================
+   ROW 1 → TOP (BROWN)
+========================= */
 #top {
-    padding: 0;
-    /* border: solid $accent 20%; */
-    height: 9;
+    layout: horizontal;
+    height: 10;
+
 }
 
+/* LEFT - Account table */
 #left-info {
     width: 25%;
-    /* border: solid $accent 20%; */
-    padding: 1;
-    margin-right: 0;
-}
-
-#right-info {
-    width: 60%;
-    border: solid $accent 20%;
-    margin-left: 0;
-}
-
-#replicator-info{
-    width: 15%;
-    border: solid $accent 20%;
     padding: 1;
 }
 
 #account-table {
-    height: 10;
+    height: 1fr;
     border: tall $primary 30%;
 }
+
+/* CENTER - LOG */
+#right-info {
+    width: 60%;
+    padding: 1;
+}
+
 #log {
     width: 1fr;
-    border: solid $accent 20%;
-    overflow: auto;
+    height: 1fr;
+    border: solid $accent 30%;
 }
 
-
-/* --- Row 2: middle grows to fill remaining space --- */
-#middle {
-    height: 18;
+/* RIGHT - RADIO */
+#replicator-info {
+    width: 15%;
     padding: 1;
-    /*border: solid $accent 20%;*/
 }
 
+#sell_status , #buy_status{
+
+    width: 13;
+}
+
+
+/* =========================
+   ROW 2 → MIDDLE (GREEN)
+========================= */
+#middle {
+    layout: horizontal;
+    height: 4;
+}
+
+/* container holding dropdown + table */
+#dropdown_container {
+    width: 50%;
+    layout: vertical;
+}
+
+/* dropdown */
+#expiry_dropdown {
+    height: 3;
+    margin-bottom: 1;
+}
+
+#tiles-container { width: 50%; }
+
+
+.tile {
+    width: 1fr;
+    content-align: center middle;
+}
+
+
+
+/* =========================
+   ROW 3 → CONTENT (BLUE)
+   (You currently DON'T have it in compose)
+   -> will auto-expand if added later
+========================= */
+/* (optional placeholder if you add later) */
+
+#content {
+    layout: horizontal;
+    height: 14;
+}
 #price_table {
-    height: 18;
-    width: 40%;
-    /* margin-bottom: 1; */
-    border: tall $primary 30%;
+    height: 1fr;
+    border: tall $primary 30%;    
+}
 
+#decision-box {
+    height: 1fr;
+    width: 50%;
+    border: tall $primary 30%;    
 }
 
 
-/* --- Row 3: small footer-like area --- */
+/* =========================
+   ROW 4 → FOOTER (YELLOW)
+========================= */
 #bottom {
     layout: horizontal;
-    height: auto;
-    padding: 1;
-    border: solid $accent 20%;
+    height: 2;
+    margin-top: 1;
 }
 
-
-
-#cmd , #preview_cmd{
-    width: 1fr;
+/* input */
+#preview_cmd {
+    width: 60%;
     margin-right: 1;
+   
 }
 
+/* buttons */
 #btn-place {
+    width: 20%;
     margin-right: 1;
+}
+
+#btn-quit {
+    width: 20%;
 }

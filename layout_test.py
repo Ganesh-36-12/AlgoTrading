@@ -14,7 +14,7 @@ from core.options_main import OptionTrader
 from core.TradeReplicator import Replicator
 from utils.auth_helper import authenticate_all_sequential
 
-accounts_dir = "accounts"
+accounts_dir = "home/accounts"
 
 class SelectionScreen(Screen):
     """
@@ -61,7 +61,7 @@ class SelectionScreen(Screen):
         await self.show_children()
 
     async def on_button_pressed(self,event: Button.Pressed):
-        if event.button.id == "master_confirm":
+        if event.button.id == "master_confirm" and len(self.master_list.selected) == 1:
             await self.master_confirm.remove()
             await self.confirm_master()
         if event.button.id == "child_confirm":
@@ -94,11 +94,12 @@ class AuthScreen(Screen):
     
     def on_mount(self) -> None:
     # ... create trader objects first ...
-        self.master_trader = OptionTrader(f"accounts/{self.app.selected_tuple[0]}")
+        self.master_trader = OptionTrader(f"{accounts_dir}/{self.app.selected_tuple[0]}")
+    
         self.child_traders = []
         
         for i in self.app.selected_tuple[1:]:
-            child_trader = OptionTrader(f"accounts/{i}")
+            child_trader = OptionTrader(f"{accounts_dir}/{i}")
             self.child_traders.append(child_trader)
         def _on_status(msg: str):
             # marshal to UI thread
@@ -153,13 +154,22 @@ class TraderApp(Screen):
                 yield RadioButton("SELL",id="sell_status",value=self.app.enable_sell)
                 yield RadioButton("BUY",id='buy_status')
 
-        # with Horizontal:
-        with Vertical(id="middle"):
-            self.expiry_select =  Select(id="expiry_dropdown",allow_blank=True,options=[])
-            yield self.expiry_select
-            self.price_table = DataTable(id="price_table")
-            self.price_table.cursor_type = "cell"
-            yield self.price_table
+        # with Vertical(id="middle"):
+        with Horizontal(id="middle"):
+            with Vertical(id="dropdown_container"):
+                self.expiry_select =  Select(id="expiry_dropdown",allow_blank=True,options=[])
+                yield self.expiry_select
+            with Horizontal(id="tiles-container"):
+                yield Static("ABC +1.23%\n987 +6.00", classes="tile")
+                yield Static("Tile 2", classes="tile")
+                yield Static("Tile 3", classes="tile")
+
+        with Horizontal(id='content'):
+            with Vertical():
+                self.price_table = DataTable(id="price_table")
+                self.price_table.cursor_type = "cell"
+                yield self.price_table
+            yield Static("not yet decided", id="decision-box")
 
         with Horizontal(id="bottom"):
             self.preview_input = Input(placeholder="Enter spot number:",id="preview_cmd")
@@ -172,7 +182,6 @@ class TraderApp(Screen):
     def on_mount(self) -> None:
         self.column_map = self.account_table.add_columns("Name","funds")
         
-
         for t in self.app.trader_obj:
             cash = float(t.get_fund_details())
             name =  max(t.name.split(), key=lambda s: len(s))
@@ -256,15 +265,6 @@ class TraderApp(Screen):
             self.status.write(f"[red] Ladder update failed: {e!r}[/]")
 
     def _on_trade_signal(self, signal: dict,force=False):
-        # if self.app.enable_sell:
-        #     if self.trader.trade_taken:
-        #         self._ui_status(f"[yellow]Trade signal[/]: Trade already taken")
-        #     else:
-        #         self.run_worker(lambda: self.replicator.execute(signal),thread=True)
-        #         self.trader.trade_taken = True
-        # else:
-        #     self._ui_status(f"[red]Trade signal[/]: Selling disabled")
-        # # Optional: auto-place orders here
         if not force:
             if not self.app.enable_sell:
                 self._ui_status("[red] Auto trading diabled[/]")
@@ -319,15 +319,6 @@ class TraderApp(Screen):
                 self.status.write(f"[red]Auto trading disabled[/]")
             else:
                 self.status.write(f"[green]Auto trading enabled[/]")
-            # if event.radio_button.value == False :
-            #     self.trader.trade_taken = True
-            #     self.status.write(f"[red]selling stopped currently[/]")
-            # else:
-            #     self.trader.trade_taken = False
-            #     self.replicator.executed = False
-            #     self.status.write(f"[green]selling started currently[/]")
-            
-            
                 
     @on(Select.Changed)
     def select_changed(self, event: Select.Changed) -> None:
@@ -376,7 +367,9 @@ class Final(App):
     trader_obj = []
     enable_sell = True
     def on_mount(self):
+        # self.push_screen(SelectionScreen())
         self.push_screen(SelectionScreen())
+        
 
 if __name__ == "__main__":
     Final().run()
