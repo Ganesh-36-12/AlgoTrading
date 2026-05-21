@@ -11,7 +11,8 @@ Screen {
 ========================= */
 #top {
     layout: horizontal;
-    height: 10;
+    height: 9;
+    padding-top: 0;
 
 }
 
@@ -60,7 +61,7 @@ Screen {
 
 /* container holding dropdown + table */
 #dropdown_container {
-    width: 50%;
+    width: 41%;
     layout: vertical;
 }
 
@@ -70,12 +71,16 @@ Screen {
     margin-bottom: 1;
 }
 
-#tiles-container { width: 50%; }
+#tiles-container { 
+    width: 50%; 
+}
 
 
 .tile {
     width: 1fr;
     content-align: center middle;
+    border: solid $accent 30%;
+    
 }
 
 
@@ -91,14 +96,15 @@ Screen {
     layout: horizontal;
     height: 14;
 }
+
 #price_table {
-    height: 1fr;
-    border: tall $primary 30%;    
+    margin-left: 1;
+    height: 1fr; 
 }
 
 #decision-box {
     height: 1fr;
-    width: 50%;
+    width: 60%;
     border: tall $primary 30%;    
 }
 

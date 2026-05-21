@@ -160,15 +160,15 @@ class TraderApp(Screen):
                 self.expiry_select =  Select(id="expiry_dropdown",allow_blank=True,options=[])
                 yield self.expiry_select
             with Horizontal(id="tiles-container"):
-                yield Static("ABC +1.23%\n987 +6.00", classes="tile")
-                yield Static("Tile 2", classes="tile")
-                yield Static("Tile 3", classes="tile")
+                yield Static("ABC +1.23%\n987 +6.00", classes="tile",id="tile_1")
+                yield Static("Tile 2", classes="tile",id="tile_2")
+                yield Static("Tile 3", classes="tile",id="tile_3")
 
         with Horizontal(id='content'):
-            with Vertical():
-                self.price_table = DataTable(id="price_table")
-                self.price_table.cursor_type = "cell"
-                yield self.price_table
+            # with Vertical(id="data_table"):
+            self.price_table = DataTable(id="price_table")
+            self.price_table.cursor_type = "cell"
+            yield self.price_table
             yield Static("not yet decided", id="decision-box")
 
         with Horizontal(id="bottom"):
@@ -201,6 +201,7 @@ class TraderApp(Screen):
         self.trader.on_tokens_changed = lambda atm, ce, pe: self.app.call_from_thread(self._ui_tokens_changed, atm, ce, pe)
         self.trader.on_preview = lambda spot, preview_ce, preview_pe, preview_diff: self.app.call_from_thread(self._ui_preview, spot,preview_ce,preview_pe,preview_diff)
         self.trader.on_table = lambda rows: self.app.call_from_thread(self._ui_ladder,rows)
+        self.trader.on_tile = lambda token,ltp,previous_close: self.app.call_from_thread(self._ui_tile,token,ltp,previous_close)
         self.trader.on_trade_signal = self._on_trade_signal
 
         self.price_table.add_columns("current_atm","CE","PE","DIFF")
@@ -214,7 +215,7 @@ class TraderApp(Screen):
     # ---------- UI update handlers ----------
     def _ui_status(self, text: str):
         self.status.write(text)
-
+        
     def _ui_tokens_changed(self, atm: int, ce_token: str, pe_token: str):
         self.atm, self.ce_token, self.pe_token = atm, ce_token, pe_token
         try:
@@ -226,6 +227,26 @@ class TraderApp(Screen):
         except Exception as e:
             self.status.write(f"[red]UI token update failed: {e!r}[/]")
                 
+    def _ui_tile(self,token :str, ltp: float,previous_close: float):
+        try:
+            tile_1 = self.query_one('#tile_1')
+            tile_1.border_title = "Nifty"
+            
+            tile_2 = self.query_one('#tile_2')
+            tile_2.border_title = "VIX"
+            
+            
+            diff = ltp - previous_close
+            percentage = (ltp-previous_close)*100/previous_close
+            color = "green" if percentage > 0 else "red"
+            
+            if token == "99926000":
+                tile_1.update(f"{ltp} \n [{color}]{diff:.2f} {percentage:.2f}%[/]")
+            if token == "99926017":
+                tile_2.update(f"{ltp} \n[{color}]{diff:.2f} {percentage:.2f}%[/]")
+        except Exception as e:
+            self.status.write(f"[red]Tile update failed: {e!r}[/]")
+            
     def _ui_preview(self, atm: int, ce_ltp: float, pe_ltp: float, diff: float):
         try:
             new_row_data = (f"{atm}",f"{ce_ltp:.2f}",f"{pe_ltp:.2f}",f"{diff:.2f}")
@@ -367,8 +388,8 @@ class Final(App):
     trader_obj = []
     enable_sell = True
     def on_mount(self):
-        # self.push_screen(SelectionScreen())
         self.push_screen(SelectionScreen())
+        # self.push_screen(AuthScreen())
         
 
 if __name__ == "__main__":
