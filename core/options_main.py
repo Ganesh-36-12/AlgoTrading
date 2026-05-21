@@ -1,12 +1,17 @@
-
 # option_trader.py
 from SmartApi import SmartConnect
 from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 from dotenv import dotenv_values
-from logzero import logger
+from logzero import logger, logfile
 from utils.load_instrument_token import load_options_token ,get_current_expiry
 import threading
-import json, pyotp, math, time
+import json, pyotp, math, time, os
+
+orig_makedirs = os.makedirs
+os.makedirs = lambda *_args, **_kwargs: None
+orig_logfile = logfile
+logfile = lambda *_args, **_kwargs: None
+
 
 class OptionTrader:
     def __init__(self, client_path):
@@ -29,8 +34,12 @@ class OptionTrader:
         self.on_table = None
         self.on_tokens_changed = None   # def on_tokens_changed(atm: int, ce_token: str, pe_token: str) -> None
         self.on_trade_signal = None     # already used by you
+        self.on_tile = None
 
         self.obj = SmartConnect(api_key=self.API, disable_ssl=True)
+        
+        os.makedirs = orig_makedirs
+        logfile = orig_logfile
         self.sws = None
         self.stop_event = threading.Event()
         # self.subscrption = {"mode": 1, "exchangeType": 2, "tokens": []}
@@ -43,6 +52,7 @@ class OptionTrader:
         self.preview_ce_token = None
         self.preview_pe_token = None
         
+        self.tile_details = {}
         self.ltp_cache = {}
         self.current_atm = None
         self.diff_threshold = 3
@@ -108,6 +118,14 @@ class OptionTrader:
             except Exception:
                 pass
             
+    def _emit_tile(self, token: str,ltp :float, previous_close: float):
+        if callable(self.on_tile):
+            try:
+                self.on_tile(token, ltp, previous_close)
+            except Exception:
+                pass
+            
+            
     def loading_tokens(self):
         self._emit_status("Downloading Tokens")
         self.expiry_list , self.symbol_token_map = load_options_token()
@@ -154,9 +172,9 @@ class OptionTrader:
     def on_open(self, ws):
         self._emit_status("WebSocket opened")
         self.sws.subscribe(
-            correlation_id="NIFTY_SPOT",
-            mode=1,
-            token_list=[{"exchangeType": 1, "tokens": ["99926000"]}]  # NSE index token
+            correlation_id="NIFTY_SPOT_and_VIX",
+            mode=2,
+            token_list=[{"exchangeType": 1, "tokens": ["99926000","99926017"]}]  # NSE index token
         )
 
     def on_data(self, ws, message):
@@ -165,6 +183,13 @@ class OptionTrader:
             ltp = message.get('last_traded_price') / 100
             self.ltp_cache[token] = ltp
             self._emit_price(token, ltp)
+        
+        closed_price = message.get('closed_price')
+        if closed_price:
+            previous_close = closed_price / 100
+            # self.tile_details[token] = previous_close
+            self._emit_tile(token,ltp,previous_close)
+        
 
     def on_error(self, ws, error):
         self._emit_status(f"WebSocket error: {error}")
