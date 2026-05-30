@@ -7,11 +7,6 @@ from utils.load_instrument_token import load_options_token ,get_current_expiry
 import threading
 import json, pyotp, math, time, os
 
-orig_makedirs = os.makedirs
-os.makedirs = lambda *_args, **_kwargs: None
-orig_logfile = logfile
-logfile = lambda *_args, **_kwargs: None
-
 
 class OptionTrader:
     def __init__(self, client_path):
@@ -21,30 +16,30 @@ class OptionTrader:
             self.API = cfg.get('API')
             self.MPIN = cfg.get('PIN')
             self.TOTP_Secret = cfg.get('TOTP')
+            self.IP = cfg.get('IP')
         except Exception as e:
             print("check the file contents")
             print("error caused:", e)
 
         # --- UI callbacks (Textual will set these) ---
-        self.on_status = None           # def on_status(text: str) -> None
-        self.on_price = None            # def on_price(token: str, ltp: float) -> None
-        self.on_diff = None             # def on_diff(atm: int, ce_ltp: float, pe_ltp: float, diff: float) -> None
+        self.on_status = None         
+        self.on_price = None         
+        self.on_diff = None          
         self.on_preview = None
-        self.on_auth = None             # def on_auth(client_name: str, funds: float) -> None
+        self.on_auth = None          
         self.on_table = None
-        self.on_tokens_changed = None   # def on_tokens_changed(atm: int, ce_token: str, pe_token: str) -> None
-        self.on_trade_signal = None     # already used by you
+        self.on_tokens_changed = None 
+        self.on_trade_signal = None    
         self.on_tile = None
 
         self.obj = SmartConnect(api_key=self.API, disable_ssl=True)
         
-        os.makedirs = orig_makedirs
-        logfile = orig_logfile
         self.sws = None
         self.stop_event = threading.Event()
         # self.subscrption = {"mode": 1, "exchangeType": 2, "tokens": []}
         self.AUTH_TOKEN = None
         self.FEED_TOKEN = None
+        
         self.name = None
         
         self.ce_token = None
@@ -216,6 +211,8 @@ class OptionTrader:
             tokens = [self.ce_token,self.pe_token]
         for i in tokens:
             leg_dict = {}
+            leg_dict['AUTH_TOKEN'] = self.AUTH_TOKEN
+            leg_dict['API'] = self.API
             leg_dict["symbol"] = self.symbol_token_map.inv[str(i)]
             leg_dict["token"] = i
             leg_dict["B_S"] = B_S

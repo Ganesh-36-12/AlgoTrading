@@ -1,5 +1,5 @@
 from threading import Lock
-
+import requests
 
 class Replicator:
     def __init__(self,master,children,logger=None):
@@ -19,14 +19,15 @@ class Replicator:
                 return
             self._log("Executing in master first")
             
+            
             for leg in trade_signal['legs']:
                 self.master.place_order(leg['symbol'],leg['token'],leg['B_S'],leg['quantity'])
-                
             self.log("Master done")
+            
             for child in self.children:
                 for leg in trade_signal['legs']:
-                    child.place_order(leg['symbol'],leg['token'],leg['B_S'],leg['quantity'])
-            
+                    r = requests.post(f'http://{child.IP}:6000/placeOrder',json=leg)
+                    self._log(r.content)
             if not force:
                 self.executed = True
         
