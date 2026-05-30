@@ -44,6 +44,8 @@ class Replicator:
             self._log("Master done")
             for child in self.children:
                 for leg in trade_signal['legs']:
-                    self._log(f"Placing order in Child with args:{leg['symbol']},{leg['token']}")
+                    r = requests.post(f'http://{child.IP}:6000/placeOrder',json=leg)
+                    self._log(r.content)
+                    # self._log(f"Placing order in Child with args:{leg['symbol']},{leg['token']}")
             if not force:       
                 self.executed = True
