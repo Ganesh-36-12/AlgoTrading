@@ -26,6 +26,8 @@ class Replicator:
             
             for child in self.children:
                 for leg in trade_signal['legs']:
+                    leg['API'] = child.API
+                    leg['AUTH_TOKEN'] = child.AUTH_TOKEN
                     r = requests.post(f'http://{child.IP}:6000/placeOrder',json=leg)
                     self._log(r.content)
             if not force:
@@ -44,6 +46,8 @@ class Replicator:
             self._log("Master done")
             for child in self.children:
                 for leg in trade_signal['legs']:
+                    leg['API'] = child.API
+                    leg['AUTH_TOKEN'] = child.AUTH_TOKEN
                     r = requests.post(f'http://{child.IP}:6000/placeOrder',json=leg)
                     self._log(r.content)
                     # self._log(f"Placing order in Child with args:{leg['symbol']},{leg['token']}")
